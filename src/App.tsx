@@ -71,6 +71,24 @@ const generateChatResponse = async (messages, systemPrompt) => {
   return text;
 };
 
+const exportToDocx = () => {
+  const el = document.getElementById('sop-document');
+  if (!el) return;
+  const html = `<!DOCTYPE html>
+<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
+<head><meta charset="UTF-8"><title>Dokumen SOP</title>
+<style>table,td,th{border:1px solid black;border-collapse:collapse}body{font-family:Arial,sans-serif;font-size:12px;padding:40px}
+img{max-width:100%;height:auto}</style></head>
+<body>${el.innerHTML}</body></html>`;
+  const blob = new Blob([html], { type: 'application/msword' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'Dokumen_SOP.doc';
+  a.click();
+  URL.revokeObjectURL(url);
+};
+
 const renderMarkdown = (text) => {
   const escaped = text
     .replace(/&/g, '&amp;')
@@ -461,8 +479,7 @@ Kembalikan jawaban dengan JSON di blok \`\`\`json yang memiliki struktur:
           <div className="flex items-center justify-between h-16 px-4 border-b border-gray-100 flex-shrink-0">
             {sidebarOpen && (
               <div className="flex items-center gap-2">
-                <div className="bg-blue-600 p-1.5 rounded-lg"><LayoutTemplate className="w-4 h-4 text-white" /></div>
-                <span className="font-bold text-gray-900">Rapid SOP</span>
+                <img src="/logo.png" alt="Logo" className="h-8 w-auto" />
               </div>
             )}
             <button onClick={() => setSidebarOpen(false)} className="p-1.5 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100">
@@ -516,8 +533,7 @@ Kembalikan jawaban dengan JSON di blok \`\`\`json yang memiliki struktur:
             <div className="flex items-center gap-3">
               {!sidebarOpen && (
                 <div className="flex items-center gap-2">
-                  <div className="bg-blue-600 p-1.5 rounded-lg"><LayoutTemplate className="w-4 h-4 text-white" /></div>
-                  <h1 className="text-lg font-bold tracking-tight text-gray-900">Rapid SOP</h1>
+                  <img src="/logo.png" alt="Logo" className="h-8 w-auto" />
                 </div>
               )}
             </div>
@@ -525,6 +541,9 @@ Kembalikan jawaban dengan JSON di blok \`\`\`json yang memiliki struktur:
               <button onClick={() => setShowPreview(!showPreview)} className="flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium rounded-full transition-colors text-sm border border-gray-200">
                 {showPreview ? <PanelRightClose className="w-4 h-4" /> : <PanelRightOpen className="w-4 h-4" />}
                 {showPreview ? 'Sembunyikan Preview' : 'Tampilkan Preview'}
+              </button>
+              <button onClick={exportToDocx} className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-medium rounded-full transition-colors shadow-sm text-sm">
+                <FileText className="w-4 h-4" /> Export DOCX
               </button>
               <button onClick={() => window.print()} className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-full transition-colors shadow-sm text-sm">
                 <Printer className="w-4 h-4" /> Cetak / PDF
@@ -819,8 +838,8 @@ Kembalikan jawaban dengan JSON di blok \`\`\`json yang memiliki struktur:
                   <tbody>
                     <tr>
                       <td rowSpan="4" style={{ border: '1px solid black', padding: '10px', textAlign: 'center', width: '25%' }}>
-                        <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 'bold' }}>rapid</h2>
-                        <p style={{ margin: 0, fontSize: '10px' }}>SOP MANAGER</p>
+                        <img src="/logo.png" alt="Logo" style={{ maxWidth: '100%', height: 'auto', maxHeight: '60px' }} />
+                        
                       </td>
                       <td style={{ border: '1px solid black', padding: '5px 10px', width: '25%', fontWeight: 'bold', fontSize: '12px' }}>NOMOR DOKUMEN</td>
                       <td colSpan="2" style={{ border: '1px solid black', padding: '5px 10px', fontSize: '12px' }}>{formData.nomorDokumen || '-'}</td>

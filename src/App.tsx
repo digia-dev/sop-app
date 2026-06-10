@@ -117,36 +117,49 @@ const generateChatResponse = async (messages, systemPrompt) => {
   return text;
 };
 
+const imgToDataUrl = (img) => new Promise(resolve => {
+  const c = document.createElement('canvas');
+  c.width = img.naturalWidth || 120;
+  c.height = img.naturalHeight || 60;
+  c.getContext('2d').drawImage(img, 0, 0);
+  resolve(c.toDataURL('image/png'));
+});
+
 const exportToDocx = () => {
   const el = document.getElementById('sop-document');
   if (!el) return;
-  const svgTasks = Array.from(el.querySelectorAll('svg')).map(svg => {
+  const tasks = [];
+  el.querySelectorAll('svg').forEach(svg => {
     const raw = new XMLSerializer().serializeToString(svg);
-    const fixed = raw.replace(/currentColor/g, '#000000');
+    const withSize = raw.replace('<svg', '<svg width="40" height="40"');
+    const fixed = withSize.replace(/currentColor/g, '#000000');
     const b64 = btoa(unescape(encodeURIComponent(fixed)));
-    return new Promise(resolve => {
+    tasks.push(new Promise(resolve => {
       const canvas = document.createElement('canvas');
-      canvas.width = 80; canvas.height = 80;
+      canvas.width = 120; canvas.height = 120;
       const ctx = canvas.getContext('2d');
+      ctx.fillStyle = 'white';
+      ctx.fillRect(0, 0, 120, 120);
       const img = new Image();
-      img.onload = () => { ctx.drawImage(img, 0, 0, 80, 80); resolve(canvas.toDataURL('image/png')); };
+      img.onload = () => { ctx.drawImage(img, 20, 20, 80, 80); resolve(canvas.toDataURL('image/png')); };
       img.onerror = () => resolve(null);
       img.src = 'data:image/svg+xml;base64,' + b64;
-    });
+    }));
   });
-  const logoSrc = el.querySelector('img')?.src || '/logo.png';
-  Promise.all(svgTasks).then(pngs => {
+  const logoImg = el.querySelector('img');
+  const logoSrc = logoImg ? imgToDataUrl(logoImg) : Promise.resolve(null);
+  Promise.all([...tasks, logoSrc]).then(([dataUrls, logoData]) => {
     const clone = el.cloneNode(true);
     clone.querySelectorAll('svg').forEach((svg, i) => {
-      if (pngs[i]) {
+      if (dataUrls[i]) {
         const img = document.createElement('img');
-        img.src = pngs[i];
+        img.src = dataUrls[i];
         img.style.cssText = 'width:40px;height:40px';
         svg.parentNode.replaceChild(img, svg);
       }
     });
     clone.querySelectorAll('img').forEach(img => {
-      if (img.src === '/logo.png' || img.src.endsWith('/logo.png')) img.src = logoSrc;
+      if (img.src !== logoData && (img.src === '/logo.png' || img.src.endsWith('/logo.png'))) img.src = logoData;
     });
     const html = `<!DOCTYPE html>
 <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
@@ -843,37 +856,23 @@ export default function App() {
                   </div>
                 )}
 
-                <div className="flex-1 overflow-auto p-4 bg-white relative" onClick={() => setMenuOpen(null)}>
-                  {flowConnections.length > 0 && (
-                    <div className="mb-4 bg-green-50/50 border border-green-100 rounded-xl p-3">
-                      <h3 className="text-xs font-bold text-green-800 mb-2">Daftar Garis Terhubung:</h3>
-                      <div className="flex flex-wrap gap-2">
-                        {flowConnections.map(conn => (
-                          <div key={conn.id} className="flex items-center gap-2 bg-white border border-green-200 rounded px-2 py-1 text-[10px] text-gray-600">
-                            <span style={{color: conn.color}} className="font-bold">[{flowRows.findIndex(r=>r.id===conn.sourceRowId)+1}] {conn.sourcePic}</span>
-                            ➔
-                            <span style={{color: conn.color}} className="font-bold">[{flowRows.findIndex(r=>r.id===conn.targetRowId)+1}] {conn.targetPic}</span>
-                            {conn.label && <span className="bg-gray-100 px-1 rounded">"{conn.label}"</span>}
-                            <button onClick={()=>removeConnection(conn.id)} className="text-red-500 hover:text-red-700 ml-1"><Trash2 className="w-3 h-3"/></button>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
+                  <div className="flex-1 overflow-auto p-4 bg-white relative" onClick={() => setMenuOpen(null)}>
                   <table className="w-full text-sm border-collapse">
                     <thead>
                       <tr className="bg-gray-100 text-gray-600 border-y border-gray-200">
                         <th className="py-3 px-2 text-center w-10">No</th>
                         <th className="py-3 px-2 text-left w-72">Uraian Kegiatan</th>
                         <th className="py-3 px-2 text-left min-w-[150px]">Simbol Shape</th>
+                        <th className="py-3 px-2 text-left w-28">Garis</th>
                         <th className="py-3 px-2 text-left w-40">Dokumen Output</th>
                         <th className="py-3 px-2 text-left w-40">Catatan</th>
                         <th className="py-3 px-2 text-center w-10"></th>
                       </tr>
                     </thead>
                     <tbody>
-                      {flowRows.map((row, index) => (
+                      {flowRows.map((row, index) => {
+                        const outConns = flowConnections.filter(c => c.sourceRowId === row.id);
+                        return (
                         <tr key={row.id} onClick={() => setActiveRowId(row.id)} className={`border-b border-gray-100 cursor-pointer ${activeRowId === row.id ? 'bg-blue-50/40 ring-1 ring-inset ring-blue-200' : 'hover:bg-gray-50'}`}>
                           <td className="py-2 px-2 text-center font-medium text-gray-400 align-top pt-4">{index + 1}</td>
                           <td className="py-2 px-2 align-top">
@@ -895,6 +894,24 @@ export default function App() {
                             </div>
                           </td>
                           <td className="py-2 px-2 align-top">
+                            <div className="flex flex-col items-center gap-1 min-h-[80px] pt-2">
+                              {outConns.length === 0 ? (
+                                <span className="text-[10px] text-gray-300 italic">-</span>
+                              ) : outConns.map(conn => {
+                                const LineIcon = LINE_OPTIONS.find(l => l.id === conn.lineType)?.Icon;
+                                const targetIdx = flowRows.findIndex(r => r.id === conn.targetRowId);
+                                return (
+                                  <div key={conn.id} className="flex flex-col items-center relative group" style={{ color: conn.color }}>
+                                    {LineIcon ? <div className="scale-125"><LineIcon /></div> : <span className="text-xs">→</span>}
+                                    <span className="text-[9px] text-gray-500 font-medium mt-0.5">→ [{targetIdx + 1}] {conn.targetPic}</span>
+                                    {conn.label && <span className="text-[8px] bg-gray-100 px-1 rounded mt-0.5">"{conn.label}"</span>}
+                                    <button onClick={(e) => { e.stopPropagation(); removeConnection(conn.id); }} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100"><Trash2 className="w-3 h-3" /></button>
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          </td>
+                          <td className="py-2 px-2 align-top">
                             <textarea value={row.doc} onChange={(e) => updateFlowRow(row.id, 'doc', e.target.value)} placeholder="Form / Laporan" className="w-full bg-transparent border-b border-transparent focus:border-blue-500 outline-none py-1 resize-y min-h-[80px]" />
                           </td>
                           <td className="py-2 px-2 align-top">
@@ -904,7 +921,7 @@ export default function App() {
                             <button onClick={(e) => { e.stopPropagation(); deleteFlowRow(row.id); }} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg"><Trash2 className="w-4 h-4" /></button>
                           </td>
                         </tr>
-                      ))}
+                      )})}
                     </tbody>
                   </table>
                   <button onClick={addFlowRow} className="mt-4 flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-600 hover:bg-blue-100 font-semibold rounded-xl text-sm w-full justify-center border border-blue-200 border-dashed">

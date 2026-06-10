@@ -2,8 +2,54 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   FileText, Printer, Plus, Trash2, LayoutTemplate, 
   PanelRightClose, PanelRightOpen, Palette, Loader2, Link as LinkIcon, Edit2, Check,
-  X, MessageSquare, Settings, Send, Bot, ChevronLeft, ChevronRight
+  X, MessageSquare, Settings, Send, Bot, ChevronLeft, ChevronRight, Clock, RotateCcw
 } from 'lucide-react';
+
+const DB_NAME = 'sop-history';
+const DB_VERSION = 1;
+const STORE_NAME = 'entries';
+
+const openDB = () => new Promise((resolve, reject) => {
+  const req = indexedDB.open(DB_NAME, DB_VERSION);
+  req.onupgradeneeded = () => req.result.createObjectStore(STORE_NAME, { keyPath: 'id', autoIncrement: true });
+  req.onsuccess = () => resolve(req.result);
+  req.onerror = () => reject(req.error);
+});
+
+const saveHistory = async (entry) => {
+  const db = await openDB();
+  const tx = db.transaction(STORE_NAME, 'readwrite');
+  tx.objectStore(STORE_NAME).add({ ...entry, createdAt: Date.now() });
+  return new Promise((resolve, reject) => {
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+};
+
+const getAllHistory = async () => {
+  const db = await openDB();
+  const tx = db.transaction(STORE_NAME, 'readonly');
+  const store = tx.objectStore(STORE_NAME);
+  const data = await new Promise((resolve) => {
+    const result = [];
+    store.openCursor(null, 'prev').onsuccess = (e) => {
+      const cursor = e.target.result;
+      if (cursor) { result.push(cursor.value); cursor.continue(); }
+      else resolve(result);
+    };
+  });
+  return data;
+};
+
+const deleteHistory = async (id) => {
+  const db = await openDB();
+  const tx = db.transaction(STORE_NAME, 'readwrite');
+  tx.objectStore(STORE_NAME).delete(id);
+  return new Promise((resolve, reject) => {
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+};
 
 const loadSettings = () => {
   try {
@@ -35,7 +81,7 @@ Kembalikan jawaban DALAM FORMAT JSON dengan struktur:
       "doc": "Dokumen output (Form/Laporan)",
       "note": "Catatan atau keterangan",
       "symbols": [
-        { "itemId": "terminal|process|decision|document|manual|input", "picTarget": "Nama Pelaksana" }
+        { "itemId": "terminal|manual|process|input|decision|document|multidoc|note|tempfile|permfile|tape|disk|onpage|offpage", "picTarget": "Nama Pelaksana" }
       ]
     }
   ]
@@ -74,19 +120,42 @@ const generateChatResponse = async (messages, systemPrompt) => {
 const exportToDocx = () => {
   const el = document.getElementById('sop-document');
   if (!el) return;
-  const html = `<!DOCTYPE html>
+  const clone = el.cloneNode(true);
+  clone.querySelectorAll('svg').forEach(svg => {
+    const s = new XMLSerializer().serializeToString(svg);
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    const img = new Image();
+    img.onload = () => {
+      canvas.width = svg.clientWidth * 2 || 80;
+      canvas.height = svg.clientHeight * 2 || 80;
+      ctx.scale(2, 2);
+      ctx.drawImage(img, 0, 0);
+      const dataUrl = canvas.toDataURL('image/png');
+      const replacement = document.createElement('img');
+      replacement.src = dataUrl;
+      replacement.style.cssText = svg.getAttribute('style') || 'width:40px;height:40px';
+      replacement.width = svg.clientWidth || 40;
+      replacement.height = svg.clientHeight || 40;
+      svg.parentNode.replaceChild(replacement, svg);
+    };
+    img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(s)));
+  });
+  setTimeout(() => {
+    const html = `<!DOCTYPE html>
 <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
 <head><meta charset="UTF-8"><title>Dokumen SOP</title>
 <style>table,td,th{border:1px solid black;border-collapse:collapse}body{font-family:Arial,sans-serif;font-size:12px;padding:40px}
 img{max-width:100%;height:auto}</style></head>
-<body>${el.innerHTML}</body></html>`;
-  const blob = new Blob([html], { type: 'application/msword' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'Dokumen_SOP.doc';
-  a.click();
-  URL.revokeObjectURL(url);
+<body>${clone.innerHTML}</body></html>`;
+    const blob = new Blob([html], { type: 'application/msword' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'Dokumen_SOP.doc';
+    a.click();
+    URL.revokeObjectURL(url);
+  }, 300);
 };
 
 const renderMarkdown = (text) => {
@@ -117,30 +186,30 @@ const extractJsonFromResponse = (text) => {
 };
 
 const Shapes = {
-  terminal: () => <svg viewBox="0 0 40 40" className="w-6 h-6"><rect x="4" y="10" width="32" height="20" rx="10" stroke="currentColor" fill="white" strokeWidth="2"/></svg>,
-  manual: () => <svg viewBox="0 0 40 40" className="w-6 h-6"><polygon points="4,10 36,10 30,30 10,30" stroke="currentColor" fill="white" strokeWidth="2"/></svg>,
-  process: () => <svg viewBox="0 0 40 40" className="w-6 h-6"><rect x="6" y="10" width="28" height="20" stroke="currentColor" fill="white" strokeWidth="2"/></svg>,
-  decision: () => <svg viewBox="0 0 40 40" className="w-6 h-6"><polygon points="20,4 36,20 20,36 4,20" stroke="currentColor" fill="white" strokeWidth="2"/></svg>,
-  input: () => <svg viewBox="0 0 40 40" className="w-6 h-6"><polygon points="4,16 36,10 36,30 4,30" stroke="currentColor" fill="white" strokeWidth="2"/></svg>,
-  document: () => <svg viewBox="0 0 40 40" className="w-6 h-6"><path d="M6,8 L34,8 L34,26 Q27,36 20,26 T6,26 Z" stroke="currentColor" fill="white" strokeWidth="2"/></svg>,
-  multidoc: () => <svg viewBox="0 0 40 40" className="w-6 h-6"><path d="M10,4 L38,4 L38,22 Q31,32 24,22 T10,22 Z" stroke="currentColor" fill="white" strokeWidth="2"/><path d="M4,10 L32,10 L32,28 Q25,38 18,28 T4,28 Z" stroke="currentColor" fill="white" strokeWidth="2"/></svg>,
-  note: () => <svg viewBox="0 0 40 40" className="w-6 h-6"><path d="M16,6 L6,6 L6,34 L16,34" stroke="currentColor" fill="none" strokeWidth="2"/><line x1="6" y1="20" x2="34" y2="20" stroke="currentColor" strokeWidth="2" strokeDasharray="4"/></svg>,
-  tempfile: () => <svg viewBox="0 0 40 40" className="w-6 h-6"><polygon points="6,10 34,10 20,32" stroke="currentColor" fill="white" strokeWidth="2"/></svg>,
-  permfile: () => <svg viewBox="0 0 40 40" className="w-6 h-6"><polygon points="20,8 34,30 6,30" stroke="currentColor" fill="white" strokeWidth="2"/></svg>,
-  tape: () => <svg viewBox="0 0 40 40" className="w-6 h-6"><circle cx="20" cy="20" r="12" stroke="currentColor" fill="white" strokeWidth="2"/><path d="M20,32 Q36,40 36,24" stroke="currentColor" fill="none" strokeWidth="2"/></svg>,
-  disk: () => <svg viewBox="0 0 40 40" className="w-6 h-6"><path d="M8,12 A12,4 0 0,1 32,12 L32,28 A12,4 0 0,1 8,28 Z" stroke="currentColor" fill="white" strokeWidth="2"/><ellipse cx="20" cy="12" rx="12" ry="4" stroke="currentColor" fill="none" strokeWidth="2"/></svg>,
-  onpage: () => <svg viewBox="0 0 40 40" className="w-6 h-6"><circle cx="20" cy="20" r="10" stroke="currentColor" fill="white" strokeWidth="2"/></svg>,
-  offpage: () => <svg viewBox="0 0 40 40" className="w-6 h-6"><polygon points="10,6 30,6 30,22 20,34 10,22" stroke="currentColor" fill="white" strokeWidth="2"/></svg>,
+  terminal: () => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" className="w-6 h-6"><rect x="4" y="10" width="32" height="20" rx="10" stroke="currentColor" fill="white" strokeWidth="2"/></svg>,
+  manual: () => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" className="w-6 h-6"><polygon points="4,10 36,10 30,30 10,30" stroke="currentColor" fill="white" strokeWidth="2"/></svg>,
+  process: () => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" className="w-6 h-6"><rect x="6" y="10" width="28" height="20" stroke="currentColor" fill="white" strokeWidth="2"/></svg>,
+  decision: () => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" className="w-6 h-6"><polygon points="20,4 36,20 20,36 4,20" stroke="currentColor" fill="white" strokeWidth="2"/></svg>,
+  input: () => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" className="w-6 h-6"><polygon points="4,16 36,10 36,30 4,30" stroke="currentColor" fill="white" strokeWidth="2"/></svg>,
+  document: () => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" className="w-6 h-6"><path d="M6,8 L34,8 L34,26 Q27,36 20,26 T6,26 Z" stroke="currentColor" fill="white" strokeWidth="2"/></svg>,
+  multidoc: () => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" className="w-6 h-6"><path d="M10,4 L38,4 L38,22 Q31,32 24,22 T10,22 Z" stroke="currentColor" fill="white" strokeWidth="2"/><path d="M4,10 L32,10 L32,28 Q25,38 18,28 T4,28 Z" stroke="currentColor" fill="white" strokeWidth="2"/></svg>,
+  note: () => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" className="w-6 h-6"><path d="M16,6 L6,6 L6,34 L16,34" stroke="currentColor" fill="none" strokeWidth="2"/><line x1="6" y1="20" x2="34" y2="20" stroke="currentColor" strokeWidth="2" strokeDasharray="4"/></svg>,
+  tempfile: () => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" className="w-6 h-6"><polygon points="6,10 34,10 20,32" stroke="currentColor" fill="white" strokeWidth="2"/></svg>,
+  permfile: () => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" className="w-6 h-6"><polygon points="20,8 34,30 6,30" stroke="currentColor" fill="white" strokeWidth="2"/></svg>,
+  tape: () => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" className="w-6 h-6"><circle cx="20" cy="20" r="12" stroke="currentColor" fill="white" strokeWidth="2"/><path d="M20,32 Q36,40 36,24" stroke="currentColor" fill="none" strokeWidth="2"/></svg>,
+  disk: () => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" className="w-6 h-6"><path d="M8,12 A12,4 0 0,1 32,12 L32,28 A12,4 0 0,1 8,28 Z" stroke="currentColor" fill="white" strokeWidth="2"/><ellipse cx="20" cy="12" rx="12" ry="4" stroke="currentColor" fill="none" strokeWidth="2"/></svg>,
+  onpage: () => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" className="w-6 h-6"><circle cx="20" cy="20" r="10" stroke="currentColor" fill="white" strokeWidth="2"/></svg>,
+  offpage: () => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" className="w-6 h-6"><polygon points="10,6 30,6 30,22 20,34 10,22" stroke="currentColor" fill="white" strokeWidth="2"/></svg>,
 };
 
 const Lines = {
-  arrowRight: () => <svg viewBox="0 0 40 40" className="w-6 h-6"><path d="M6,20 L34,20 M26,12 L34,20 L26,28" stroke="currentColor" fill="none" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round"/></svg>,
-  arrowDown: () => <svg viewBox="0 0 40 40" className="w-6 h-6"><path d="M20,6 L20,34 M12,26 L20,34 L28,26" stroke="currentColor" fill="none" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round"/></svg>,
-  arrowLeft: () => <svg viewBox="0 0 40 40" className="w-6 h-6"><path d="M34,20 L6,20 M14,12 L6,20 L14,28" stroke="currentColor" fill="none" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round"/></svg>,
-  solidRight: () => <svg viewBox="0 0 40 40" className="w-6 h-6"><line x1="6" y1="20" x2="34" y2="20" stroke="currentColor" strokeWidth="2"/></svg>,
-  solidDown: () => <svg viewBox="0 0 40 40" className="w-6 h-6"><line x1="20" y1="6" x2="20" y2="34" stroke="currentColor" strokeWidth="2"/></svg>,
-  dashedRight: () => <svg viewBox="0 0 40 40" className="w-6 h-6"><line x1="6" y1="20" x2="34" y2="20" stroke="currentColor" strokeWidth="2" strokeDasharray="5,5"/></svg>,
-  dashedDown: () => <svg viewBox="0 0 40 40" className="w-6 h-6"><line x1="20" y1="6" x2="20" y2="34" stroke="currentColor" strokeWidth="2" strokeDasharray="5,5"/></svg>,
+  arrowRight: () => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" className="w-6 h-6"><path d="M6,20 L34,20 M26,12 L34,20 L26,28" stroke="currentColor" fill="none" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round"/></svg>,
+  arrowDown: () => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" className="w-6 h-6"><path d="M20,6 L20,34 M12,26 L20,34 L28,26" stroke="currentColor" fill="none" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round"/></svg>,
+  arrowLeft: () => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" className="w-6 h-6"><path d="M34,20 L6,20 M14,12 L6,20 L14,28" stroke="currentColor" fill="none" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round"/></svg>,
+  solidRight: () => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" className="w-6 h-6"><line x1="6" y1="20" x2="34" y2="20" stroke="currentColor" strokeWidth="2"/></svg>,
+  solidDown: () => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" className="w-6 h-6"><line x1="20" y1="6" x2="20" y2="34" stroke="currentColor" strokeWidth="2"/></svg>,
+  dashedRight: () => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" className="w-6 h-6"><line x1="6" y1="20" x2="34" y2="20" stroke="currentColor" strokeWidth="2" strokeDasharray="5,5"/></svg>,
+  dashedDown: () => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" className="w-6 h-6"><line x1="20" y1="6" x2="20" y2="34" stroke="currentColor" strokeWidth="2" strokeDasharray="5,5"/></svg>,
 };
 
 const SHAPE_OPTIONS = [
@@ -359,7 +428,7 @@ export default function App() {
 Kembalikan jawaban dengan JSON di blok \`\`\`json yang memiliki struktur:
 {
   "form": { "tujuan": "", "ruangLingkup": "", "ringkasan": "", "definisi": "", "landasanHukum": "", "perlengkapan": "" },
-  "flow": { "rows": [ { "text": "", "doc": "", "note": "", "symbols": [ { "itemId": "terminal", "picTarget": "" } ] } ] }
+  "flow": { "rows": [ { "text": "", "doc": "", "note": "", "symbols": [ { "itemId": "terminal|manual|process|input|decision|document|multidoc|note|tempfile|permfile|tape|disk|onpage|offpage", "picTarget": "" } ] } ] }
 }`;
     } else if (targets.includes('form')) {
       prompt += `${settings.systemPrompt || ''}`;
@@ -440,11 +509,28 @@ Kembalikan jawaban dengan JSON di blok \`\`\`json yang memiliki struktur:
       const jsonData = extractJsonFromResponse(aiResponse);
 
       let applyMsg = '';
+      let appliedForm = null;
+      let appliedRows = null;
+      let appliedConns = null;
       if (jsonData && targets.length > 0) {
+        appliedForm = { ...formData };
+        appliedRows = flowRows.map(r => ({ ...r, symbols: r.symbols.map(s => ({ ...s })) }));
+        appliedConns = flowConnections.map(c => ({ ...c }));
         applyMsg = applyJsonToSection(jsonData, targets);
       }
 
       setChatMessages(prev => [...prev, { role: 'assistant', content: aiResponse + (applyMsg ? `\n\n${applyMsg}` : '') }]);
+      if (applyMsg) {
+        saveHistory({
+          userMessage: msg,
+          aiResponse,
+          appliedForm,
+          appliedRows,
+          appliedConns,
+          targets,
+          jsonData
+        }).catch(() => {});
+      }
     } catch (error) {
       setChatMessages(prev => [...prev, { role: 'assistant', content: `❌ **Error:** ${error.message}` }]);
     }
@@ -460,10 +546,40 @@ Kembalikan jawaban dengan JSON di blok \`\`\`json yang memiliki struktur:
 
   const displayPics = existingPics.length > 0 ? existingPics : ['Pelaksana'];
 
+  const [historyItems, setHistoryItems] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+
+  const loadHistory = async () => {
+    setHistoryLoading(true);
+    try { setHistoryItems(await getAllHistory()); } catch {}
+    setHistoryLoading(false);
+  };
+
+  const applyHistoryEntry = (entry) => {
+    if (entry.appliedForm) setFormData(entry.appliedForm);
+    if (entry.appliedRows) {
+      setFlowRows(entry.appliedRows.map(r => ({ ...r, symbols: r.symbols.map(s => ({ ...s })) })));
+      setActiveRowId(entry.appliedRows[0]?.id);
+    }
+    if (entry.appliedConns) setFlowConnections(entry.appliedConns.map(c => ({ ...c })));
+    setChatMessages(prev => [...prev, { role: 'system', content: `📋 **History restored:** "${entry.userMessage}"` }]);
+    setActiveSection('form');
+  };
+
+  const handleDeleteHistory = async (id) => {
+    await deleteHistory(id);
+    loadHistory();
+  };
+
+  useEffect(() => {
+    if (activeSection === 'history') loadHistory();
+  }, [activeSection]);
+
   const navItems = [
     { id: 'form', label: 'Formulir Dasar', icon: FileText },
     { id: 'flowchart', label: 'Tabel Alur', icon: LayoutTemplate },
     { id: 'agent', label: 'Agent', icon: MessageSquare },
+    { id: 'history', label: 'History', icon: Clock },
   ];
 
   return (
@@ -940,8 +1056,55 @@ Kembalikan jawaban dengan JSON di blok \`\`\`json yang memiliki struktur:
               </div>
             </div>
           </main>
-        </div>
-      </div>
+              </div>
+
+              <div className={`flex flex-col h-full ${activeSection === 'history' ? 'flex' : 'hidden'}`}>
+                <div className="bg-white rounded-3xl shadow-sm border border-gray-100 flex flex-col h-full min-h-[600px]">
+                  <div className="p-4 border-b border-gray-100 bg-gray-50 rounded-t-3xl">
+                    <div className="flex items-center gap-3">
+                      <div className="bg-gradient-to-br from-amber-500 to-orange-600 p-2 rounded-xl">
+                        <Clock className="w-5 h-5 text-white" />
+                      </div>
+                      <div>
+                        <h2 className="font-bold text-gray-800">History</h2>
+                        <p className="text-xs text-gray-500">Riwayat permintaan agent AI</p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-gray-50/50" style={{ maxHeight: 'calc(100vh - 280px)' }}>
+                    {historyLoading ? (
+                      <div className="flex items-center justify-center py-12 text-gray-400"><Loader2 className="w-5 h-5 animate-spin mr-2" /> Memuat...</div>
+                    ) : historyItems.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center py-12 text-gray-400">
+                        <Clock className="w-12 h-12 mb-3 opacity-30" />
+                        <p className="text-sm">Belum ada riwayat.</p>
+                        <p className="text-xs">Gunakan Agent AI untuk generate SOP</p>
+                      </div>
+                    ) : (
+                      historyItems.map((item) => (
+                        <div key={item.id} className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow">
+                          <div className="flex items-start justify-between gap-2 mb-2">
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-semibold text-gray-800 truncate">{item.userMessage}</p>
+                              <p className="text-[10px] text-gray-400 mt-0.5">{new Date(item.createdAt).toLocaleString('id-ID')}</p>
+                            </div>
+                            <div className="flex gap-1 flex-shrink-0">
+                              <button onClick={() => applyHistoryEntry(item)} className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors" title="Apply">
+                                <RotateCcw className="w-4 h-4" />
+                              </button>
+                              <button onClick={() => handleDeleteHistory(item.id)} className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition-colors" title="Hapus">
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </div>
+                          <p className="text-xs text-gray-500 line-clamp-2">{item.aiResponse?.replace(/```[\s\S]*?```/g, '').trim()}</p>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
 
       {settingsOpen && (
         <div className="fixed inset-0 bg-gray-900/50 backdrop-blur-sm flex items-center justify-center z-50 no-print">

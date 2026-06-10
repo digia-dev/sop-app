@@ -57,31 +57,31 @@ const loadSettings = () => {
     if (saved) return JSON.parse(saved);
   } catch {}
   return {
-    systemPrompt: `Anda adalah asisten ahli pembuat SOP (Standar Operasional Prosedur) perusahaan.
-Buatlah narasi SOP lengkap dan realistis sesuai judul yang diberikan.
-Jangan gunakan kalimat template. Buat konten spesifik sesuai industri/bidang dokumen tersebut.
+    systemPrompt: `Anda adalah seorang ahli yang kompeten dalam penyusunan Standar Operasional Prosedur (SOP) perusahaan.
+Susunlah narasi SOP secara lengkap, sistematis, dan realistis sesuai dengan judul yang diberikan.
+Hindari penggunaan kalimat templat atau generik. Buatlah konten yang spesifik sesuai dengan bidang industri atau jenis dokumen tersebut.
 
-Kembalikan jawaban DALAM FORMAT JSON dengan struktur:
+Kembalikan jawaban dalam format JSON dengan struktur berikut:
 {
-  "tujuan": "Tujuan spesifik dari SOP ini...",
-  "ruangLingkup": "Batasan dan lingkup departemen yang terlibat...",
-  "ringkasan": "Ringkasan alur kerja secara singkat...",
-  "definisi": "Definisi istilah teknis yang relevan...",
-  "landasanHukum": "UU, Peraturan, atau standar ISO yang relevan...",
-  "perlengkapan": "Alat kerja, software, atau mesin yang dibutuhkan..."
+  "tujuan": "Tujuan spesifik dari pelaksanaan SOP ini...",
+  "ruangLingkup": "Batasan serta lingkup departemen dan unit kerja yang terlibat...",
+  "ringkasan": "Ringkasan alur kerja secara singkat dan padat...",
+  "definisi": "Definisi istilah teknis yang relevan dengan prosedur ini...",
+  "landasanHukum": "Landasan hukum, peraturan perundang-undangan, atau standar mutu yang mendasari prosedur...",
+  "perlengkapan": "Perlengkapan kerja, perangkat lunak, atau mesin yang diperlukan..."
 }`,
-    flowPrompt: `Anda adalah asisten ahli pembuat tabel alur (flowchart) SOP.
-Buatlah tabel alur yang lengkap dengan simbol-simbol flowchart untuk SOP yang diminta.
+    flowPrompt: `Anda adalah seorang ahli yang kompeten dalam penyusunan tabel alur (flowchart) Standar Operasional Prosedur (SOP).
+Susunlah tabel alur secara lengkap dengan simbol-simbol flowchart yang tepat sesuai dengan prosedur yang diminta.
 
-Kembalikan jawaban DALAM FORMAT JSON dengan struktur:
+Kembalikan jawaban dalam format JSON dengan struktur berikut:
 {
   "rows": [
     {
-      "text": "Uraian kegiatan langkah demi langkah",
-      "doc": "Dokumen output (Form/Laporan)",
-      "note": "Catatan atau keterangan",
+      "text": "Uraian kegiatan secara langkah demi langkah",
+      "doc": "Dokumen keluaran (formulir, laporan, atau catatan)",
+      "note": "Keterangan atau catatan tambahan",
       "symbols": [
-        { "itemId": "terminal|manual|process|input|decision|document|multidoc|note|tempfile|permfile|tape|disk|onpage|offpage", "picTarget": "Nama Pelaksana" }
+        { "itemId": "terminal|manual|process|input|decision|document|multidoc|note|tempfile|permfile|tape|disk|onpage|offpage", "picTarget": "Nama Pelaksana atau Penanggung Jawab" }
       ]
     }
   ]
@@ -117,64 +117,57 @@ const generateChatResponse = async (messages, systemPrompt) => {
   return text;
 };
 
-const imgToDataUrl = (img) => new Promise(resolve => {
-  const c = document.createElement('canvas');
-  c.width = img.naturalWidth || 120;
-  c.height = img.naturalHeight || 60;
-  c.getContext('2d').drawImage(img, 0, 0);
-  resolve(c.toDataURL('image/png'));
-});
+const SHAPE_SYMBOLS = {
+  terminal: '⬭', manual: '⏢', process: '▭', decision: '◇',
+  input: '▱', document: '📄', multidoc: '📑', note: '📝',
+  tempfile: '▲', permfile: '▼', tape: '💿', disk: '💾',
+  onpage: '⏺', offpage: '⏏',
+};
+
+const LINE_SYMBOLS = {
+  arrowRight: '→', arrowDown: '↓', arrowLeft: '←',
+  solidRight: '─', solidDown: '│', dashedRight: '╌', dashedDown: '┊',
+};
 
 const exportToDocx = () => {
   const el = document.getElementById('sop-document');
   if (!el) return;
-  const tasks = [];
-  el.querySelectorAll('svg').forEach(svg => {
-    const raw = new XMLSerializer().serializeToString(svg);
-    const withSize = raw.replace('<svg', '<svg width="40" height="40"');
-    const fixed = withSize.replace(/currentColor/g, '#000000');
-    const b64 = btoa(unescape(encodeURIComponent(fixed)));
-    tasks.push(new Promise(resolve => {
-      const canvas = document.createElement('canvas');
-      canvas.width = 120; canvas.height = 120;
-      const ctx = canvas.getContext('2d');
-      ctx.fillStyle = 'white';
-      ctx.fillRect(0, 0, 120, 120);
-      const img = new Image();
-      img.onload = () => { ctx.drawImage(img, 20, 20, 80, 80); resolve(canvas.toDataURL('image/png')); };
-      img.onerror = () => resolve(null);
-      img.src = 'data:image/svg+xml;base64,' + b64;
-    }));
+  const clone = el.cloneNode(true);
+  clone.querySelectorAll('[data-shape-id]').forEach(el => {
+    const id = el.getAttribute('data-shape-id');
+    const color = el.style.color || '#000';
+    const symbol = SHAPE_SYMBOLS[id] || '●';
+    el.innerHTML = `<span style="font-size:28px;color:${color};font-family:Segoe UI Emoji,Apple Color Emoji,sans-serif;">${symbol}</span>`;
+    el.className = '';
+    el.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;margin:2px';
   });
-  const logoImg = el.querySelector('img');
-  const logoSrc = logoImg ? imgToDataUrl(logoImg) : Promise.resolve(null);
-  Promise.all([...tasks, logoSrc]).then(([dataUrls, logoData]) => {
-    const clone = el.cloneNode(true);
-    clone.querySelectorAll('svg').forEach((svg, i) => {
-      if (dataUrls[i]) {
-        const img = document.createElement('img');
-        img.src = dataUrls[i];
-        img.style.cssText = 'width:40px;height:40px';
-        svg.parentNode.replaceChild(img, svg);
-      }
-    });
-    clone.querySelectorAll('img').forEach(img => {
-      if (img.src !== logoData && (img.src === '/logo.png' || img.src.endsWith('/logo.png'))) img.src = logoData;
-    });
-    const html = `<!DOCTYPE html>
+  clone.querySelectorAll('[data-line-id]').forEach(el => {
+    const id = el.getAttribute('data-line-id');
+    const color = el.style.color || '#000';
+    const symbol = LINE_SYMBOLS[id] || '→';
+    el.innerHTML = `<span style="font-size:24px;color:${color};">${symbol}</span>`;
+    el.className = '';
+    el.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;margin:2px';
+  });
+  clone.querySelectorAll('svg').forEach(svg => {
+    const s = document.createElement('span');
+    s.textContent = '●';
+    s.style.cssText = 'font-size:16px;color:#000';
+    svg.parentNode.replaceChild(s, svg);
+  });
+  const html = `<!DOCTYPE html>
 <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
 <head><meta charset="UTF-8"><title>Dokumen SOP</title>
 <style>table,td,th{border:1px solid black;border-collapse:collapse}body{font-family:Arial,sans-serif;font-size:12px;padding:40px}
 img{max-width:100%;height:auto}</style></head>
 <body>${clone.innerHTML}</body></html>`;
-    const blob = new Blob([html], { type: 'application/msword' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'Dokumen_SOP.doc';
-    a.click();
-    URL.revokeObjectURL(url);
-  });
+  const blob = new Blob([html], { type: 'application/msword' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'Dokumen_SOP.doc';
+  a.click();
+  URL.revokeObjectURL(url);
 };
 
 const renderMarkdown = (text) => {
@@ -446,11 +439,11 @@ export default function App() {
   };
 
   const buildChatSystemPrompt = (targets) => {
-    const baseContent = (settings.systemPrompt || '').replace(/Kembalikan jawaban.*$/s, '').trim();
-    let prompt = 'Anda adalah asisten ahli pembuat SOP perusahaan yang membantu mengisi dokumen SOP.\n';
+    const baseContent = (settings.systemPrompt || '').replace(/Kembalikan jawaban.*$/is, '').trim();
+    let prompt = 'Anda adalah seorang ahli yang kompeten dalam penyusunan Standar Operasional Prosedur (SOP) perusahaan yang bertugas mengisi dokumen SOP.\n';
 
     if (targets.includes('form') && targets.includes('flow')) {
-      prompt += `${baseContent}\n\nUser meminta KEDUA konten (FORMULIR + TABEL ALUR).\nHanya kembalikan JSON di blok \`\`\`json. Jangan tulis teks lain.\nStruktur:
+      prompt += `${baseContent}\n\nPengguna meminta KEDUA konten (FORMULIR + TABEL ALUR).\nHanya kembalikan JSON di blok \`\`\`json. Jangan tulis teks lain.\nStruktur:
 \`\`\`json
 {
   "form": { "tujuan": "", "ruangLingkup": "", "ringkasan": "", "definisi": "", "landasanHukum": "", "perlengkapan": "" },
@@ -884,7 +877,7 @@ export default function App() {
                                 const Icon = SHAPE_OPTIONS.find(s => s.id === sym.itemId)?.Icon;
                                 if (!Icon) return null;
                                 return (
-                                  <div key={sym.id} className="relative group flex flex-col items-center p-1 bg-gray-50 border border-gray-100 rounded" style={{ color: sym.color }}>
+                                  <div key={sym.id} className="relative group flex flex-col items-center p-1 bg-gray-50 border border-gray-100 rounded" style={{ color: sym.color }} data-shape-id={sym.itemId}>
                                     <Icon />
                                     <span className="text-[9px] mt-1 text-gray-500 font-medium px-1 bg-white border border-gray-200 rounded">{sym.picTarget}</span>
                                     <button onClick={(e) => { e.stopPropagation(); removeSymbol(row.id, sym.id); }} className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100"><Trash2 className="w-3 h-3" /></button>
@@ -901,7 +894,7 @@ export default function App() {
                                 const LineIcon = LINE_OPTIONS.find(l => l.id === conn.lineType)?.Icon;
                                 const targetIdx = flowRows.findIndex(r => r.id === conn.targetRowId);
                                 return (
-                                  <div key={conn.id} className="flex flex-col items-center relative group" style={{ color: conn.color }}>
+                                  <div key={conn.id} className="flex flex-col items-center relative group" style={{ color: conn.color }} data-line-id={conn.lineType}>
                                     {LineIcon ? <div className="scale-125"><LineIcon /></div> : <span className="text-xs">→</span>}
                                     <span className="text-[9px] text-gray-500 font-medium mt-0.5">→ [{targetIdx + 1}] {conn.targetPic}</span>
                                     {conn.label && <span className="text-[8px] bg-gray-100 px-1 rounded mt-0.5">"{conn.label}"</span>}
@@ -1059,13 +1052,13 @@ export default function App() {
                                       <div className="flex flex-col items-center gap-1.5 py-1 z-10 bg-white">
                                         {symbolsForPic.map(sym => {
                                           const Icon = SHAPE_OPTIONS.find(s => s.id === sym.itemId)?.Icon;
-                                          return Icon ? <div key={sym.id} style={{ color: sym.color }}><Icon /></div> : null;
+                                          return Icon ? <div key={sym.id} style={{ color: sym.color }} data-shape-id={sym.itemId}><Icon /></div> : null;
                                         })}
                                       </div>
                                       {connsFromThisPic.map(conn => {
                                         const LineIcon = LINE_OPTIONS.find(l => l.id === conn.lineType)?.Icon;
                                         return (
-                                          <div key={conn.id} className="flex flex-col items-center mt-1" style={{ color: conn.color }}>
+                                          <div key={conn.id} className="flex flex-col items-center mt-1" style={{ color: conn.color }} data-line-id={conn.lineType}>
                                             {LineIcon && <LineIcon />}
                                             {conn.label && <span className="text-[8px] bg-white px-1 mt-0.5 border border-gray-200">{conn.label}</span>}
                                           </div>

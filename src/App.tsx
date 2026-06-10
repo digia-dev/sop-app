@@ -123,6 +123,25 @@ const generateChatResponse = async (messages, systemPrompt) => {
   return text;
 };
 
+const getActionTypes = (content) => {
+  const j = extractJsonFromResponse(content);
+  if (!j) return {};
+  const hasForm = j.form || (j.tujuan && !j.rows);
+  const hasFlow = j.flow || j.rows;
+  return { hasForm: !!hasForm, hasFlow: !!hasFlow };
+};
+
+const CheckActions = ({ content, onApplyForm, onApplyFlow }) => {
+  const { hasForm, hasFlow } = getActionTypes(content);
+  if (!hasForm && !hasFlow) return null;
+  return (
+    <div className="flex gap-1.5 mt-2 pt-2 border-t border-gray-100">
+      {hasForm && <button onClick={onApplyForm} className="text-[10px] px-2 py-1 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-md font-medium">Terapkan ke Formulir</button>}
+      {hasFlow && <button onClick={onApplyFlow} className="text-[10px] px-2 py-1 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 rounded-md font-medium">Terapkan ke Tabel</button>}
+    </div>
+  );
+};
+
 const SHAPE_SYMBOLS = {
   terminal: '⬭', manual: '⏢', process: '▭', decision: '◇',
   input: '▱', document: '📄', multidoc: '📑', note: '📝',
@@ -437,83 +456,19 @@ export default function App() {
     setLinePrompt(null);
   };
 
-  const parseTargets = (text) => {
-    const targets = [];
-    if (/#Formulir/i.test(text)) targets.push('form');
-    if (/#Tabel/i.test(text)) targets.push('flow');
-    return targets;
-  };
+  const buildChatSystemPrompt = () => {
+    const base = (settings.systemPrompt || '').replace(/Kembalikan jawaban.*$/is, '').trim();
+    return `${base || 'Anda adalah ahli penyusunan SOP perusahaan.'}
 
-  const buildChatSystemPrompt = (targets) => {
-    const baseContent = (settings.systemPrompt || '').replace(/Kembalikan jawaban.*$/is, '').trim();
-    let prompt = 'Anda adalah ahli penyusunan SOP perusahaan. Bertugas mengisi dokumen SOP berdasarkan permintaan.\n';
+Setelah narasi, sediakan data dalam JSON di blok \`\`\`json.
 
-    if (targets.includes('form') && targets.includes('flow')) {
-      prompt += `${baseContent}\n\nUser meminta KEDUA konten (FORMULIR + TABEL ALUR).\nHanya kembalikan JSON di blok \`\`\`json. Jangan tulis teks lain.\nStruktur:
-\`\`\`json
-{
-  "form": { "tujuan": "", "ruangLingkup": "", "ringkasan": "", "definisi": "", "landasanHukum": "", "perlengkapan": "" },
-  "flow": { "rows": [ { "text": "", "doc": "", "note": "", "symbols": [ { "itemId": "terminal|manual|process|input|decision|document|multidoc|note|tempfile|permfile|tape|disk|onpage|offpage", "picTarget": "" } ] } ] }
-}
-\`\`\``;
-    } else if (targets.includes('form')) {
-      prompt += `${settings.systemPrompt || ''}\n\nHanya kembalikan JSON di blok \`\`\`json. Jangan tulis teks lain.`;
-    } else if (targets.includes('flow')) {
-      prompt += `${settings.flowPrompt || settings.systemPrompt || ''}\n\nHanya kembalikan JSON di blok \`\`\`json. Jangan tulis teks lain.`;
-    } else {
-      prompt += `${settings.systemPrompt || ''}`;
-    }
-    return prompt;
-  };
+Untuk data formulir gunakan struktur:
+{"form":{"tujuan":"","ruangLingkup":"","ringkasan":"","definisi":"","landasanHukum":"","perlengkapan":""}}
 
-  const applyJsonToSection = (jsonData, targets) => {
-    if (targets.includes('form') && targets.includes('flow')) {
-      if (jsonData.form && jsonData.flow) {
-        setFormData(prev => ({ ...prev, ...jsonData.form }));
-        if (jsonData.flow.rows && Array.isArray(jsonData.flow.rows)) {
-          const newRows = jsonData.flow.rows.map(row => ({
-            id: generateId(),
-            symbols: (row.symbols || []).map(s => ({ ...s, id: generateId(), type: 'shape', color: '#1f2937' })),
-            text: row.text || '',
-            doc: row.doc || '',
-            note: row.note || ''
-          }));
-          setFlowRows(newRows);
-          setActiveRowId(newRows[0]?.id);
-        }
-        return '✅ Data **Formulir** dan **Tabel Alur** telah diperbarui.';
-      }
-      if (jsonData.tujuan) setFormData(prev => ({ ...prev, ...jsonData }));
-      if (jsonData.rows && Array.isArray(jsonData.rows)) {
-        const newRows = jsonData.rows.map(row => ({
-          id: generateId(),
-          symbols: (row.symbols || []).map(s => ({ ...s, id: generateId(), type: 'shape', color: '#1f2937' })),
-          text: row.text || '',
-          doc: row.doc || '',
-          note: row.note || ''
-        }));
-        setFlowRows(newRows);
-        setActiveRowId(newRows[0]?.id);
-      }
-      if (jsonData.tujuan || jsonData.rows) return '✅ Data telah diperbarui.';
-    } else if (targets.includes('form') && jsonData.tujuan) {
-      setFormData(prev => ({ ...prev, ...jsonData }));
-      return '✅ Data **Formulir** telah diperbarui.';
-    } else if (targets.includes('flow') && jsonData.rows) {
-      if (Array.isArray(jsonData.rows)) {
-        const newRows = jsonData.rows.map(row => ({
-          id: generateId(),
-          symbols: (row.symbols || []).map(s => ({ ...s, id: generateId(), type: 'shape', color: '#1f2937' })),
-          text: row.text || '',
-          doc: row.doc || '',
-          note: row.note || ''
-        }));
-        setFlowRows(newRows);
-        setActiveRowId(newRows[0]?.id);
-      }
-      return '✅ Data **Tabel Alur** telah diperbarui.';
-    }
-    return '';
+Untuk data tabel alur gunakan struktur:
+{"flow":{"rows":[{"text":"","doc":"","note":"","symbols":[{"itemId":"terminal|manual|process|input|decision|document|multidoc|note|tempfile|permfile|tape|disk|onpage|offpage","picTarget":""}]}]}}
+
+Bisa salah satu atau keduanya tergantung permintaan user.`;
   };
 
   const handleChatSubmit = async () => {
@@ -524,43 +479,42 @@ export default function App() {
     setChatMessages(prev => [...prev, { role: 'user', content: msg }]);
     setIsChatLoading(true);
 
-    const targets = parseTargets(msg);
-    const sysPrompt = buildChatSystemPrompt(targets);
+    const sysPrompt = buildChatSystemPrompt();
 
     const chatHistory = chatMessages.map(m => ({ role: m.role, content: m.content }));
     chatHistory.push({ role: 'user', content: msg });
 
     try {
       const aiResponse = await generateChatResponse(chatHistory, sysPrompt);
-      const jsonData = extractJsonFromResponse(aiResponse);
-
-      let applyMsg = '';
-      let appliedForm = null;
-      let appliedRows = null;
-      let appliedConns = null;
-      if (jsonData && targets.length > 0) {
-        appliedForm = { ...formData };
-        appliedRows = flowRows.map(r => ({ ...r, symbols: r.symbols.map(s => ({ ...s })) }));
-        appliedConns = flowConnections.map(c => ({ ...c }));
-        applyMsg = applyJsonToSection(jsonData, targets);
-      }
-
-      setChatMessages(prev => [...prev, { role: 'assistant', content: aiResponse + (applyMsg ? `\n\n${applyMsg}` : '') }]);
-      if (applyMsg) {
-        saveHistory({
-          userMessage: msg,
-          aiResponse,
-          appliedForm,
-          appliedRows,
-          appliedConns,
-          targets,
-          jsonData
-        }).catch(() => {});
-      }
+      setChatMessages(prev => [...prev, { role: 'assistant', content: aiResponse }]);
     } catch (error) {
       setChatMessages(prev => [...prev, { role: 'assistant', content: `❌ **Error:** ${error.message}` }]);
     }
     setIsChatLoading(false);
+  };
+
+  const handleApplyForm = (content) => {
+    const j = extractJsonFromResponse(content);
+    if (!j) return;
+    const data = j.form || j;
+    setFormData(prev => ({ ...prev, ...data }));
+  };
+
+  const handleApplyFlow = (content) => {
+    const j = extractJsonFromResponse(content);
+    if (!j) return;
+    const rows = j.flow?.rows || j.rows;
+    if (Array.isArray(rows)) {
+      const newRows = rows.map(row => ({
+        id: generateId(),
+        symbols: (row.symbols || []).map(s => ({ ...s, id: generateId(), type: 'shape', color: '#1f2937' })),
+        text: row.text || '',
+        doc: row.doc || '',
+        note: row.note || ''
+      }));
+      setFlowRows(newRows);
+      setActiveRowId(newRows[0]?.id);
+    }
   };
 
   const handleChatKeyDown = (e) => {
@@ -952,6 +906,9 @@ export default function App() {
                             : 'bg-white border border-gray-200 text-gray-700 rounded-bl-md shadow-sm'
                         }`}>
                           <div dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }} />
+                          {msg.role === 'assistant' && (
+                            <CheckActions content={msg.content} onApplyForm={() => handleApplyForm(msg.content)} onApplyFlow={() => handleApplyFlow(msg.content)} />
+                          )}
                         </div>
                       </div>
                     ))}
@@ -971,7 +928,7 @@ export default function App() {
                         value={chatInput}
                         onChange={e => setChatInput(e.target.value)}
                         onKeyDown={handleChatKeyDown}
-                        placeholder="Ketik pesan... Gunakan #Formulir, #Tabel, atau #Formulir #Tabel"
+                        placeholder="Ketik permintaan SOP..."
                         rows={2}
                         className="flex-1 bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400 resize-none"
                       />
@@ -984,7 +941,7 @@ export default function App() {
                       </button>
                     </div>
                     <p className="text-[10px] text-gray-400 mt-2">
-                      Gunakan <code className="bg-gray-100 px-1 rounded text-gray-600">#Formulir</code> untuk konten form, <code className="bg-gray-100 px-1 rounded text-gray-600">#Tabel</code> untuk tabel alur
+                      Tombol <code className="bg-gray-100 px-1 rounded text-gray-600">Terapkan ke Formulir</code> / <code className="bg-gray-100 px-1 rounded text-gray-600">Tabel</code> muncul otomatis jika respons AI mengandung data JSON
                     </p>
                   </div>
                 </div>

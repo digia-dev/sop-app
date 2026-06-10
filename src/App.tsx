@@ -51,7 +51,7 @@ const generateChatResponse = async (messages, systemPrompt) => {
       'Authorization': `Bearer ${import.meta.env.VITE_OPENROUTER_API_KEY}`
     },
     body: JSON.stringify({
-      model: 'google/gemma-4-31b-it:free',
+      model: 'meta-llama/llama-3.2-3b-instruct:free',
       messages: [
         { role: 'system', content: systemPrompt },
         ...messages.map(m => ({ role: m.role, content: m.content }))

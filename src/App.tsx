@@ -177,9 +177,16 @@ const extractJsonFromResponse = (text) => {
   if (block) {
     try { return JSON.parse(block[1].trim()); } catch {}
   }
-  const jsonStart = text.indexOf('{');
-  if (jsonStart !== -1) {
-    try { return JSON.parse(text.slice(jsonStart).replace(/[^}]*$/, '')); } catch {}
+  const brace = text.indexOf('{');
+  if (brace !== -1) {
+    let depth = 0, start = brace;
+    for (let i = start; i < text.length; i++) {
+      if (text[i] === '{') depth++;
+      else if (text[i] === '}') depth--;
+      if (depth === 0) {
+        try { return JSON.parse(text.slice(start, i + 1)); } catch { break; }
+      }
+    }
   }
   try { return JSON.parse(text.trim()); } catch {}
   return null;
@@ -424,16 +431,17 @@ export default function App() {
     let prompt = 'Anda adalah asisten ahli pembuat SOP perusahaan yang membantu mengisi dokumen SOP.\n';
 
     if (targets.includes('form') && targets.includes('flow')) {
-      prompt += `${baseContent}\n\nUser meminta KEDUA konten (FORMULIR + TABEL ALUR).
-Kembalikan jawaban dengan JSON di blok \`\`\`json yang memiliki struktur:
+      prompt += `${baseContent}\n\nUser meminta KEDUA konten (FORMULIR + TABEL ALUR).\nHanya kembalikan JSON di blok \`\`\`json. Jangan tulis teks lain.\nStruktur:
+\`\`\`json
 {
   "form": { "tujuan": "", "ruangLingkup": "", "ringkasan": "", "definisi": "", "landasanHukum": "", "perlengkapan": "" },
   "flow": { "rows": [ { "text": "", "doc": "", "note": "", "symbols": [ { "itemId": "terminal|manual|process|input|decision|document|multidoc|note|tempfile|permfile|tape|disk|onpage|offpage", "picTarget": "" } ] } ] }
-}`;
+}
+\`\`\``;
     } else if (targets.includes('form')) {
-      prompt += `${settings.systemPrompt || ''}`;
+      prompt += `${settings.systemPrompt || ''}\n\nHanya kembalikan JSON di blok \`\`\`json. Jangan tulis teks lain.`;
     } else if (targets.includes('flow')) {
-      prompt += `${settings.flowPrompt || settings.systemPrompt || ''}`;
+      prompt += `${settings.flowPrompt || settings.systemPrompt || ''}\n\nHanya kembalikan JSON di blok \`\`\`json. Jangan tulis teks lain.`;
     } else {
       prompt += `${settings.systemPrompt || ''}`;
     }

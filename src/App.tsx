@@ -97,7 +97,7 @@ const generateChatResponse = async (messages, systemPrompt) => {
       'Authorization': `Bearer ${import.meta.env.VITE_OPENROUTER_API_KEY}`
     },
     body: JSON.stringify({
-      model: 'deepseek/deepseek-chat:free',
+      model: 'openrouter/free',
       messages: [
         { role: 'system', content: systemPrompt },
         ...messages.map(m => ({ role: m.role, content: m.content }))

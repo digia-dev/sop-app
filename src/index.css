@@ -1,0 +1,16 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  font-family: 'Quicksand', sans-serif;
+  background-color: #F5F5F7;
+  margin: 0;
+}
+
+@media print {
+  body * { visibility: hidden; }
+  #sop-document, #sop-document * { visibility: visible; }
+  #sop-document { position: absolute; left: 0; top: 0; width: 100%; box-shadow: none; padding: 0; }
+  .no-print { display: none !important; }
+}

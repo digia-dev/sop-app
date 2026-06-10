@@ -57,31 +57,31 @@ const loadSettings = () => {
     if (saved) return JSON.parse(saved);
   } catch {}
   return {
-    systemPrompt: `Anda adalah seorang ahli yang kompeten dalam penyusunan Standar Operasional Prosedur (SOP) perusahaan.
-Susunlah narasi SOP secara lengkap, sistematis, dan realistis sesuai dengan judul yang diberikan.
-Hindari penggunaan kalimat templat atau generik. Buatlah konten yang spesifik sesuai dengan bidang industri atau jenis dokumen tersebut.
+    systemPrompt: `Anda adalah ahli penyusunan Standar Operasional Prosedur (SOP) perusahaan.
+Susun narasi SOP secara lengkap, sistematis, dan spesifik sesuai judul yang diberikan.
+Hindari kalimat generik.
 
 Kembalikan jawaban dalam format JSON dengan struktur berikut:
 {
-  "tujuan": "Tujuan spesifik dari pelaksanaan SOP ini...",
-  "ruangLingkup": "Batasan serta lingkup departemen dan unit kerja yang terlibat...",
-  "ringkasan": "Ringkasan alur kerja secara singkat dan padat...",
-  "definisi": "Definisi istilah teknis yang relevan dengan prosedur ini...",
-  "landasanHukum": "Landasan hukum, peraturan perundang-undangan, atau standar mutu yang mendasari prosedur...",
-  "perlengkapan": "Perlengkapan kerja, perangkat lunak, atau mesin yang diperlukan..."
+  "tujuan": "Tujuan spesifik pelaksanaan SOP ini...",
+  "ruangLingkup": "Lingkup departemen dan unit kerja terkait...",
+  "ringkasan": "Ringkasan alur kerja secara singkat...",
+  "definisi": "Definisi istilah teknis yang relevan...",
+  "landasanHukum": "Landasan hukum, peraturan, atau standar mutu...",
+  "perlengkapan": "Perlengkapan kerja, perangkat lunak, atau mesin..."
 }`,
-    flowPrompt: `Anda adalah seorang ahli yang kompeten dalam penyusunan tabel alur (flowchart) Standar Operasional Prosedur (SOP).
-Susunlah tabel alur secara lengkap dengan simbol-simbol flowchart yang tepat sesuai dengan prosedur yang diminta.
+    flowPrompt: `Anda adalah ahli penyusunan tabel alir (flowchart) Standar Operasional Prosedur (SOP).
+Susun tabel alir secara lengkap dengan simbol flowchart yang tepat sesuai prosedur yang diminta.
 
 Kembalikan jawaban dalam format JSON dengan struktur berikut:
 {
   "rows": [
     {
-      "text": "Uraian kegiatan secara langkah demi langkah",
-      "doc": "Dokumen keluaran (formulir, laporan, atau catatan)",
-      "note": "Keterangan atau catatan tambahan",
+      "text": "Uraian kegiatan langkah demi langkah",
+      "doc": "Dokumen keluaran (formulir, laporan, catatan)",
+      "note": "Keterangan tambahan",
       "symbols": [
-        { "itemId": "terminal|manual|process|input|decision|document|multidoc|note|tempfile|permfile|tape|disk|onpage|offpage", "picTarget": "Nama Pelaksana atau Penanggung Jawab" }
+        { "itemId": "terminal|manual|process|input|decision|document|multidoc|note|tempfile|permfile|tape|disk|onpage|offpage", "picTarget": "Pelaksana atau Penanggung Jawab" }
       ]
     }
   ]
@@ -111,12 +111,12 @@ const generateChatResponse = async (messages, systemPrompt) => {
     throw new Error(`HTTP ${response.status}: ${errText}`);
   }
 
+  const rawText = await response.text();
   let result;
   try {
-    result = await response.json();
+    result = JSON.parse(rawText);
   } catch {
-    const raw = await response.text();
-    throw new Error(`Respons tidak valid: ${raw.slice(0, 200)}`);
+    throw new Error(`Respons tidak valid: ${rawText.slice(0, 200)}`);
   }
   const text = result.choices?.[0]?.message?.content;
   if (!text) throw new Error('Respons AI kosong.');
@@ -446,10 +446,10 @@ export default function App() {
 
   const buildChatSystemPrompt = (targets) => {
     const baseContent = (settings.systemPrompt || '').replace(/Kembalikan jawaban.*$/is, '').trim();
-    let prompt = 'Anda adalah seorang ahli yang kompeten dalam penyusunan Standar Operasional Prosedur (SOP) perusahaan yang bertugas mengisi dokumen SOP.\n';
+    let prompt = 'Anda adalah ahli penyusunan SOP perusahaan. Bertugas mengisi dokumen SOP berdasarkan permintaan.\n';
 
     if (targets.includes('form') && targets.includes('flow')) {
-      prompt += `${baseContent}\n\nPengguna meminta KEDUA konten (FORMULIR + TABEL ALUR).\nHanya kembalikan JSON di blok \`\`\`json. Jangan tulis teks lain.\nStruktur:
+      prompt += `${baseContent}\n\nUser meminta KEDUA konten (FORMULIR + TABEL ALUR).\nHanya kembalikan JSON di blok \`\`\`json. Jangan tulis teks lain.\nStruktur:
 \`\`\`json
 {
   "form": { "tujuan": "", "ruangLingkup": "", "ringkasan": "", "definisi": "", "landasanHukum": "", "perlengkapan": "" },

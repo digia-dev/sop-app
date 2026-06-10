@@ -120,28 +120,34 @@ const generateChatResponse = async (messages, systemPrompt) => {
 const exportToDocx = () => {
   const el = document.getElementById('sop-document');
   if (!el) return;
-  const clone = el.cloneNode(true);
-  clone.querySelectorAll('svg').forEach(svg => {
-    const s = new XMLSerializer().serializeToString(svg);
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-    const img = new Image();
-    img.onload = () => {
-      canvas.width = svg.clientWidth * 2 || 80;
-      canvas.height = svg.clientHeight * 2 || 80;
-      ctx.scale(2, 2);
-      ctx.drawImage(img, 0, 0);
-      const dataUrl = canvas.toDataURL('image/png');
-      const replacement = document.createElement('img');
-      replacement.src = dataUrl;
-      replacement.style.cssText = svg.getAttribute('style') || 'width:40px;height:40px';
-      replacement.width = svg.clientWidth || 40;
-      replacement.height = svg.clientHeight || 40;
-      svg.parentNode.replaceChild(replacement, svg);
-    };
-    img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(s)));
+  const svgTasks = Array.from(el.querySelectorAll('svg')).map(svg => {
+    const raw = new XMLSerializer().serializeToString(svg);
+    const fixed = raw.replace(/currentColor/g, '#000000');
+    const b64 = btoa(unescape(encodeURIComponent(fixed)));
+    return new Promise(resolve => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 80; canvas.height = 80;
+      const ctx = canvas.getContext('2d');
+      const img = new Image();
+      img.onload = () => { ctx.drawImage(img, 0, 0, 80, 80); resolve(canvas.toDataURL('image/png')); };
+      img.onerror = () => resolve(null);
+      img.src = 'data:image/svg+xml;base64,' + b64;
+    });
   });
-  setTimeout(() => {
+  const logoSrc = el.querySelector('img')?.src || '/logo.png';
+  Promise.all(svgTasks).then(pngs => {
+    const clone = el.cloneNode(true);
+    clone.querySelectorAll('svg').forEach((svg, i) => {
+      if (pngs[i]) {
+        const img = document.createElement('img');
+        img.src = pngs[i];
+        img.style.cssText = 'width:40px;height:40px';
+        svg.parentNode.replaceChild(img, svg);
+      }
+    });
+    clone.querySelectorAll('img').forEach(img => {
+      if (img.src === '/logo.png' || img.src.endsWith('/logo.png')) img.src = logoSrc;
+    });
     const html = `<!DOCTYPE html>
 <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
 <head><meta charset="UTF-8"><title>Dokumen SOP</title>
@@ -155,7 +161,7 @@ img{max-width:100%;height:auto}</style></head>
     a.download = 'Dokumen_SOP.doc';
     a.click();
     URL.revokeObjectURL(url);
-  }, 300);
+  });
 };
 
 const renderMarkdown = (text) => {

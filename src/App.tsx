@@ -111,7 +111,13 @@ const generateChatResponse = async (messages, systemPrompt) => {
     throw new Error(`HTTP ${response.status}: ${errText}`);
   }
 
-  const result = await response.json();
+  let result;
+  try {
+    result = await response.json();
+  } catch {
+    const raw = await response.text();
+    throw new Error(`Respons tidak valid: ${raw.slice(0, 200)}`);
+  }
   const text = result.choices?.[0]?.message?.content;
   if (!text) throw new Error('Respons AI kosong.');
   return text;

@@ -61,27 +61,27 @@ const loadSettings = () => {
 Susun narasi SOP secara lengkap, sistematis, dan spesifik sesuai judul yang diberikan.
 Hindari kalimat generik.
 
-Kembalikan jawaban dalam format JSON dengan struktur berikut:
+Gunakan JSON berikut sebagai STRUCTURE, jangan salin teks contohnya. Isi dengan konten asli buatan Anda:
 {
-  "tujuan": "Tujuan spesifik pelaksanaan SOP ini...",
-  "ruangLingkup": "Lingkup departemen dan unit kerja terkait...",
-  "ringkasan": "Ringkasan alur kerja secara singkat...",
-  "definisi": "Definisi istilah teknis yang relevan...",
-  "landasanHukum": "Landasan hukum, peraturan, atau standar mutu...",
-  "perlengkapan": "Perlengkapan kerja, perangkat lunak, atau mesin..."
+  "tujuan": "",
+  "ruangLingkup": "",
+  "ringkasan": "",
+  "definisi": "",
+  "landasanHukum": "",
+  "perlengkapan": ""
 }`,
     flowPrompt: `Anda adalah ahli penyusunan tabel alir (flowchart) Standar Operasional Prosedur (SOP).
 Susun tabel alir secara lengkap dengan simbol flowchart yang tepat sesuai prosedur yang diminta.
 
-Kembalikan jawaban dalam format JSON dengan struktur berikut:
+Gunakan JSON berikut sebagai STRUCTURE, jangan salin teks contohnya. Isi dengan konten asli buatan Anda:
 {
   "rows": [
     {
-      "text": "Uraian kegiatan langkah demi langkah",
-      "doc": "Dokumen keluaran (formulir, laporan, catatan)",
-      "note": "Keterangan tambahan",
+      "text": "",
+      "doc": "",
+      "note": "",
       "symbols": [
-        { "itemId": "terminal|manual|process|input|decision|document|multidoc|note|tempfile|permfile|tape|disk|onpage|offpage", "picTarget": "Pelaksana atau Penanggung Jawab" }
+        { "itemId": "", "picTarget": "" }
       ]
     }
   ]
@@ -460,12 +460,14 @@ export default function App() {
     const base = (settings.systemPrompt || '').replace(/Kembalikan jawaban.*$/is, '').trim();
     return `${base || 'Anda adalah ahli penyusunan SOP perusahaan.'}
 
+BUAT KONTEN ASLI. Jangan salin teks contoh atau placeholder dari instruksi di atas. Hasilkan konten spesifik sesuai permintaan user.
+
 Setelah narasi, sediakan data dalam JSON di blok \`\`\`json.
 
-Untuk data formulir gunakan struktur:
+Untuk data formulir gunakan struktur (isi VALUE dengan konten asli buatan sendiri):
 {"form":{"tujuan":"","ruangLingkup":"","ringkasan":"","definisi":"","landasanHukum":"","perlengkapan":""}}
 
-Untuk data tabel alur gunakan struktur:
+Untuk data tabel alur gunakan struktur (isi VALUE dengan konten asli buatan sendiri):
 {"flow":{"rows":[{"text":"","doc":"","note":"","symbols":[{"itemId":"terminal|manual|process|input|decision|document|multidoc|note|tempfile|permfile|tape|disk|onpage|offpage","picTarget":""}]}]}}
 
 Bisa salah satu atau keduanya tergantung permintaan user.`;

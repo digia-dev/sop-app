@@ -51,7 +51,7 @@ const generateChatResponse = async (messages, systemPrompt) => {
       'Authorization': `Bearer ${import.meta.env.VITE_OPENROUTER_API_KEY}`
     },
     body: JSON.stringify({
-      model: 'openrouter/free',
+      model: 'deepseek/deepseek-chat:free',
       messages: [
         { role: 'system', content: systemPrompt },
         ...messages.map(m => ({ role: m.role, content: m.content }))
@@ -104,9 +104,13 @@ const renderMarkdown = (text) => {
 };
 
 const extractJsonFromResponse = (text) => {
-  const block = text.match(/```json\n?([\s\S]*?)\n?```/);
+  const block = text.match(/```(?:json)?\n?([\s\S]*?)```/);
   if (block) {
     try { return JSON.parse(block[1].trim()); } catch {}
+  }
+  const jsonStart = text.indexOf('{');
+  if (jsonStart !== -1) {
+    try { return JSON.parse(text.slice(jsonStart).replace(/[^}]*$/, '')); } catch {}
   }
   try { return JSON.parse(text.trim()); } catch {}
   return null;
@@ -347,37 +351,46 @@ export default function App() {
   };
 
   const buildChatSystemPrompt = (targets) => {
-    const basePrompt = targets.includes('flow') && !targets.includes('form')
-      ? (settings.flowPrompt || settings.systemPrompt || '')
-      : (settings.systemPrompt || '');
-
-    let prompt = `Anda adalah asisten ahli pembuat SOP perusahaan yang membantu mengisi dokumen SOP.
-${basePrompt}`;
+    const baseContent = (settings.systemPrompt || '').replace(/Kembalikan jawaban.*$/s, '').trim();
+    let prompt = 'Anda adalah asisten ahli pembuat SOP perusahaan yang membantu mengisi dokumen SOP.\n';
 
     if (targets.includes('form') && targets.includes('flow')) {
-      prompt += `\n\nUser meminta KEDUA konten (FORMULIR + TABEL ALUR).
+      prompt += `${baseContent}\n\nUser meminta KEDUA konten (FORMULIR + TABEL ALUR).
 Kembalikan jawaban dengan JSON di blok \`\`\`json yang memiliki struktur:
 {
   "form": { "tujuan": "", "ruangLingkup": "", "ringkasan": "", "definisi": "", "landasanHukum": "", "perlengkapan": "" },
   "flow": { "rows": [ { "text": "", "doc": "", "note": "", "symbols": [ { "itemId": "terminal", "picTarget": "" } ] } ] }
 }`;
     } else if (targets.includes('form')) {
-      prompt += `\n\nUser meminta konten FORMULIR SOP.
-Kembalikan jawaban dengan JSON di blok \`\`\`json yang memiliki struktur:
-{ "tujuan": "", "ruangLingkup": "", "ringkasan": "", "definisi": "", "landasanHukum": "", "perlengkapan": "" }`;
+      prompt += `${settings.systemPrompt || ''}`;
     } else if (targets.includes('flow')) {
-      prompt += `\n\nUser meminta TABEL ALUR (flowchart) SOP.
-Kembalikan jawaban dengan JSON di blok \`\`\`json yang memiliki struktur:
-{ "rows": [ { "text": "Uraian kegiatan", "doc": "Dokumen output", "note": "Catatan", "symbols": [ { "itemId": "terminal|process|decision|document", "picTarget": "Nama Pelaksana" } ] } ] }`;
+      prompt += `${settings.flowPrompt || settings.systemPrompt || ''}`;
+    } else {
+      prompt += `${settings.systemPrompt || ''}`;
     }
     return prompt;
   };
 
   const applyJsonToSection = (jsonData, targets) => {
-    if (targets.includes('form') && targets.includes('flow') && jsonData.form && jsonData.flow) {
-      setFormData(prev => ({ ...prev, ...jsonData.form }));
-      if (jsonData.flow.rows && Array.isArray(jsonData.flow.rows)) {
-        const newRows = jsonData.flow.rows.map(row => ({
+    if (targets.includes('form') && targets.includes('flow')) {
+      if (jsonData.form && jsonData.flow) {
+        setFormData(prev => ({ ...prev, ...jsonData.form }));
+        if (jsonData.flow.rows && Array.isArray(jsonData.flow.rows)) {
+          const newRows = jsonData.flow.rows.map(row => ({
+            id: generateId(),
+            symbols: (row.symbols || []).map(s => ({ ...s, id: generateId(), type: 'shape', color: '#1f2937' })),
+            text: row.text || '',
+            doc: row.doc || '',
+            note: row.note || ''
+          }));
+          setFlowRows(newRows);
+          setActiveRowId(newRows[0]?.id);
+        }
+        return '✅ Data **Formulir** dan **Tabel Alur** telah diperbarui.';
+      }
+      if (jsonData.tujuan) setFormData(prev => ({ ...prev, ...jsonData }));
+      if (jsonData.rows && Array.isArray(jsonData.rows)) {
+        const newRows = jsonData.rows.map(row => ({
           id: generateId(),
           symbols: (row.symbols || []).map(s => ({ ...s, id: generateId(), type: 'shape', color: '#1f2937' })),
           text: row.text || '',
@@ -387,7 +400,7 @@ Kembalikan jawaban dengan JSON di blok \`\`\`json yang memiliki struktur:
         setFlowRows(newRows);
         setActiveRowId(newRows[0]?.id);
       }
-      return '✅ Data **Formulir** dan **Tabel Alur** telah diperbarui.';
+      if (jsonData.tujuan || jsonData.rows) return '✅ Data telah diperbarui.';
     } else if (targets.includes('form') && jsonData.tujuan) {
       setFormData(prev => ({ ...prev, ...jsonData }));
       return '✅ Data **Formulir** telah diperbarui.';
